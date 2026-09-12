@@ -1201,6 +1201,253 @@ elif defined(haiku):
     EPROTO* = OSErrorCode(low(int32) + 0x7039)
       # Protocol error
 
+elif defined(solaris):
+  ## Source: https://github.com/illumos/illumos-gate/blob/master/usr/src/uts/common/sys/errno.h
+  const
+    EPERM* = OSErrorCode(1)
+      # Not super-user
+    ENOENT* = OSErrorCode(2)
+      # No such file or directory
+    ESRCH* = OSErrorCode(3)
+      # No such process
+    EINTR* = OSErrorCode(4)
+      # interrupted system call
+    EIO* = OSErrorCode(5)
+      # I/O error
+    ENXIO* = OSErrorCode(6)
+      # No such device or address
+    E2BIG* = OSErrorCode(7)
+      # Arg list too long
+    ENOEXEC* = OSErrorCode(8)
+      # Exec format error
+    EBADF* = OSErrorCode(9)
+      # Bad file number
+    ECHILD* = OSErrorCode(10)
+      # No children
+    EAGAIN* = OSErrorCode(11)
+      # Resource temporarily unavailable
+    ENOMEM* = OSErrorCode(12)
+      # Not enough core
+    EACCES* = OSErrorCode(13)
+      # Permission denied
+    EFAULT* = OSErrorCode(14)
+      # Bad address
+    ENOTBLK* = OSErrorCode(15)
+      # Block device required
+    EBUSY* = OSErrorCode(16)
+      # Mount device busy
+    EEXIST* = OSErrorCode(17)
+      # File exists
+    EXDEV* = OSErrorCode(18)
+      # Cross-device link
+    ENODEV* = OSErrorCode(19)
+      # No such device
+    ENOTDIR* = OSErrorCode(20)
+      # Not a directory
+    EISDIR* = OSErrorCode(21)
+      # Is a directory
+    EINVAL* = OSErrorCode(22)
+      # Invalid argument
+    ENFILE* = OSErrorCode(23)
+      # File table overflow
+    EMFILE* = OSErrorCode(24)
+      # Too many open files
+    ENOTTY* = OSErrorCode(25)
+      # Inappropriate ioctl for device
+    ETXTBSY* = OSErrorCode(26)
+      # Text file busy
+    EFBIG* = OSErrorCode(27)
+      # File too large
+    ENOSPC* = OSErrorCode(28)
+      # No space left on device
+    ESPIPE* = OSErrorCode(29)
+      # Illegal seek
+    EROFS* = OSErrorCode(30)
+      # Read only file system
+    EMLINK* = OSErrorCode(31)
+      # Too many links
+    EPIPE* = OSErrorCode(32)
+      # Broken pipe
+    EDOM* = OSErrorCode(33)
+      # Math arg out of domain of func
+    ERANGE* = OSErrorCode(34)
+      # Math result not representable
+    ENOMSG* = OSErrorCode(35)
+      # No message of desired type
+    EIDRM* = OSErrorCode(36)
+      # Identifier removed
+    ECHRNG* = OSErrorCode(37)
+      # Channel number out of range
+    EL2NSYNC* = OSErrorCode(38)
+      # Level 2 not synchronized
+    EL3HLT* = OSErrorCode(39)
+      # Level 3 halted
+    EL3RST* = OSErrorCode(40)
+      # Level 3 reset
+    ELNRNG* = OSErrorCode(41)
+      # Link number out of range
+    EUNATCH* = OSErrorCode(42)
+      # Protocol driver not attached
+    ENOCSI* = OSErrorCode(43)
+      # No CSI structure available
+    EL2HLT* = OSErrorCode(44)
+      # Level 2 halted
+    EDEADLK* = OSErrorCode(45)
+      # Deadlock condition.
+    ENOLCK* = OSErrorCode(46)
+      # No record locks available.
+    ECANCELED* = OSErrorCode(47)
+      # Operation canceled
+    ENOTSUP* = OSErrorCode(48)
+      # Operation not supported
+    EDQUOT* = OSErrorCode(49)
+      # Disc quota exceeded
+    EBADE* = OSErrorCode(50)
+      # invalid exchange
+    EBADR* = OSErrorCode(51)
+      # invalid request descriptor
+    EXFULL* = OSErrorCode(52)
+      # exchange full
+    ENOANO* = OSErrorCode(53)
+      # no anode
+    EBADRQC* = OSErrorCode(54)
+      # invalid request code
+    EBADSLT* = OSErrorCode(55)
+      # invalid slot
+    EDEADLOCK* = OSErrorCode(56)
+      # file locking deadlock error
+    EBFONT* = OSErrorCode(57)
+      # bad font file fmt
+    EOWNERDEAD* = OSErrorCode(58)
+      # process died with the lock
+    ENOTRECOVERABLE* = OSErrorCode(59)
+      # lock is not recoverable
+    ENOSTR* = OSErrorCode(60)
+      # Device not a stream
+    ENODATA* = OSErrorCode(61)
+      # no data (for no delay io)
+    ETIME* = OSErrorCode(62)
+      # timer expired
+    ENOSR* = OSErrorCode(63)
+      # out of streams resources
+    ENONET* = OSErrorCode(64)
+      # Machine is not on the network
+    ENOPKG* = OSErrorCode(65)
+      # Package not installed
+    EREMOTE* = OSErrorCode(66)
+      # The object is remote
+    ENOLINK* = OSErrorCode(67)
+      # the link has been severed
+    EADV* = OSErrorCode(68)
+      # advertise error
+    ESRMNT* = OSErrorCode(69)
+      # srmount error
+    ECOMM* = OSErrorCode(70)
+      # Communication error on send
+    EPROTO* = OSErrorCode(71)
+      # Protocol error
+    ELOCKUNMAPPED* = OSErrorCode(72)
+      # locked lock was unmapped
+    ENOTACTIVE* = OSErrorCode(73)
+      # Facility is not active
+    EMULTIHOP* = OSErrorCode(74)
+      # multihop attempted
+    EBADMSG* = OSErrorCode(77)
+      # trying to read unreadable message
+    ENAMETOOLONG* = OSErrorCode(78)
+      # path name is too long
+    EOVERFLOW* = OSErrorCode(79)
+      # value too large to be stored in data type
+    ENOTUNIQ* = OSErrorCode(80)
+      # given log. name not unique
+    EBADFD* = OSErrorCode(81)
+      # f.d. invalid for this operation
+    EREMCHG* = OSErrorCode(82)
+      # Remote address changed
+    ELIBACC* = OSErrorCode(83)
+      # Can't access a needed shared lib.
+    ELIBBAD* = OSErrorCode(84)
+      # Accessing a corrupted shared lib.
+    ELIBSCN* = OSErrorCode(85)
+      # .lib section in a.out corrupted.
+    ELIBMAX* = OSErrorCode(86)
+      # Attempting to link in too many libs.
+    ELIBEXEC* = OSErrorCode(87)
+      # Attempting to exec a shared library.
+    EILSEQ* = OSErrorCode(88)
+      # Illegal byte sequence.
+    ENOSYS* = OSErrorCode(89)
+      # Unsupported file system operation
+    ELOOP* = OSErrorCode(90)
+      # Symbolic link loop
+    ERESTART* = OSErrorCode(91)
+      # Restartable system call
+    ESTRPIPE* = OSErrorCode(92)
+      # if pipe/FIFO, don't sleep in stream head
+    ENOTEMPTY* = OSErrorCode(93)
+      # directory not empty
+    EUSERS* = OSErrorCode(94)
+      # Too many users (for UFS)
+    ENOTSOCK* = OSErrorCode(95)
+      # Socket operation on non-socket
+    EDESTADDRREQ* = OSErrorCode(96)
+      # Destination address required
+    EMSGSIZE* = OSErrorCode(97)
+      # Message too long
+    EPROTOTYPE* = OSErrorCode(98)
+      # Protocol wrong type for socket
+    ENOPROTOOPT* = OSErrorCode(99)
+      # Protocol not available
+    EPROTONOSUPPORT* = OSErrorCode(120)
+      # Protocol not supported
+    ESOCKTNOSUPPORT* = OSErrorCode(121)
+      # Socket type not supported
+    EOPNOTSUPP* = OSErrorCode(122)
+      # Operation not supported on socket
+    EPFNOSUPPORT* = OSErrorCode(123)
+      # Protocol family not supported
+    EAFNOSUPPORT* = OSErrorCode(124)
+      # Address family not supported by protocol family
+    EADDRINUSE* = OSErrorCode(125)
+      # Address already in use
+    EADDRNOTAVAIL* = OSErrorCode(126)
+      # Can't assign requested address
+    ENETDOWN* = OSErrorCode(127)
+      # Network is down
+    ENETUNREACH* = OSErrorCode(128)
+      # Network is unreachable
+    ENETRESET* = OSErrorCode(129)
+      # Network dropped connection because of reset
+    ECONNABORTED* = OSErrorCode(130)
+      # Software caused connection abort
+    ECONNRESET* = OSErrorCode(131)
+      # Connection reset by peer
+    ENOBUFS* = OSErrorCode(132)
+      # No buffer space available
+    EISCONN* = OSErrorCode(133)
+      # Socket is already connected
+    ENOTCONN* = OSErrorCode(134)
+      # Socket is not connected
+    ESHUTDOWN* = OSErrorCode(143)
+      # Can't send after socket shutdown
+    ETOOMANYREFS* = OSErrorCode(144)
+      # Too many references: can't splice
+    ETIMEDOUT* = OSErrorCode(145)
+      # Connection timed out
+    ECONNREFUSED* = OSErrorCode(146)
+      # Connection refused
+    EHOSTDOWN* = OSErrorCode(147)
+      # Host is down
+    EHOSTUNREACH* = OSErrorCode(148)
+      # No route to host
+    EWOULDBLOCK* = OSErrorCode(EAGAIN)
+    EALREADY* = OSErrorCode(149)
+      # operation already in progress
+    EINPROGRESS* = OSErrorCode(150)
+      # operation now in progress
+    ESTALE* = OSErrorCode(151)
+      # Stale NFS file handle
+
 elif defined(linux):
   ## Source: https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/errno-base.h
   ##         https://github.com/torvalds/linux/blob/master/include/uapi/asm-generic/errno.h
