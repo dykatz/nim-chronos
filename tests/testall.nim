@@ -16,14 +16,16 @@ import
     testasyncsemaphore, testmpsc,
   ]
 
-when (chronosEventEngine in ["epoll", "kqueue"]) or defined(windows):
-  # `poll` engine does not support signals and processes.
+when (chronosEventEngine in ["epoll", "kqueue", "event_port"]) or defined(windows):
+  # Signal support is independent of process-watching support.
   import testsignal
 
+when (chronosEventEngine in ["epoll", "kqueue"]) or defined(windows):
   # Mobile test binaries cannot execute the host-side helper scripts used by
   # the process tests.
   when not (defined(android) or defined(ios)):
     import testproc
 
+when (chronosEventEngine in ["epoll", "kqueue", "event_port"]) or defined(windows):
   # Must be imported last to check for Pending futures
   import testutils

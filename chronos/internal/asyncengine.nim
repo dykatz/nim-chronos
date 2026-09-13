@@ -1059,6 +1059,13 @@ elif defined(macosx) or defined(freebsd) or defined(netbsd) or
       ## callback ``cb`` with specified argument ``udata``. Returns signal
       ## identifier code, which can be used to remove signal callback
       ## via ``removeSignal``.
+      ##
+      ## On illumos, registration and removal must run on this dispatcher's
+      ## thread. Other threads must also block the signal if process-directed
+      ## signals are to be consumed exclusively by signalfd (normally block
+      ## them before starting those threads). Removal restores this signal's
+      ## prior blocked/unblocked state; pending signals may then be delivered
+      ## to the original handler.
       let loop = getThreadDispatcher()
       var data: SelectorData
       let sigfd = ? loop.selector.registerSignal(signal, data)
@@ -1180,9 +1187,13 @@ elif defined(macosx) or defined(freebsd) or defined(netbsd) or
           if not isNil(adata.reader.function):
             loop.callbacks.addLast(adata.reader)
 
-        when chronosEventEngine in ["epoll", "kqueue"]:
-          let customSet = {Event.Timer, Event.Signal, Event.Process,
-                           Event.Vnode}
+        when chronosEventEngine in ["epoll", "kqueue", "event_port"]:
+          const customSet =
+            when chronosEventEngine == "event_port":
+              # Native timer/process dispatcher integration is separate.
+              {Event.Signal}
+            else:
+              {Event.Timer, Event.Signal, Event.Process, Event.Vnode}
           if customSet * events != {}:
             if not isNil(adata.reader.function):
               loop.callbacks.addLast(adata.reader)

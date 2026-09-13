@@ -1216,11 +1216,14 @@ proc race*(futs: openArray[SomeFuture]): Future[SomeFuture] {.
 
 proc race*(_: typeof([])) {.error: "`race` requires at least one future".}
 
-when (chronosEventEngine in ["epoll", "kqueue"]) or defined(windows):
+when (chronosEventEngine in ["epoll", "kqueue", "event_port"]) or defined(windows):
   import std/os
 
   proc waitSignal*(signal: int): Future[void] {.
       async: (raw: true, raises: [AsyncError, CancelledError]).} =
+    ## Wait for a signal, removing its registration on completion or cancellation.
+    ## On illumos, only one registration per signal per dispatcher is allowed,
+    ## and the thread and signal-mask requirements of ``addSignal2`` apply.
     var retFuture = newFuture[void]("chronos.waitSignal()")
     var signalHandle: Opt[SignalHandle]
 
@@ -1249,6 +1252,7 @@ when (chronosEventEngine in ["epoll", "kqueue"]) or defined(windows):
         let res = addSignal2(signal, continuation)
         if res.isErr():
           retFuture.fail(getSignalException(res.error()))
+          return retFuture
         Opt.some(res.get())
 
     retFuture.cancelCallback = cancellation

@@ -7,9 +7,9 @@
 #
 # This module implements illumos event ports. Selector operations (including
 # signal registration and cleanup) belong to the dispatcher's thread. Only
-# SelectEvent handles may be shared with other threads. Native timer, signal
-# and process readiness is exposed at selector level; dispatcher/future
-# capability guards are integrated separately. Vnodes are not implemented.
+# SelectEvent handles may be shared with other threads. Signal events support
+# dispatcher callbacks and futures. Native timer/process readiness is exposed
+# at selector level; dispatcher integration is separate. Vnodes are unsupported.
 
 import std/[deques, tables]
 from std/posix import ClockId, Timer, SigEvent, Itimerspec,
