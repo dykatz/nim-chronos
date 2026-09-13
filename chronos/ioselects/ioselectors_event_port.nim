@@ -9,18 +9,32 @@
 # signal registration and cleanup) belong to the dispatcher's thread. Only
 # SelectEvent handles may be shared with other threads. Signals are reported as
 # Event.Signal; dispatcher/future capability guards must separately enable their
-# delivery. Native timer, process and vnode registrations are not implemented.
+# delivery. Process and vnode registrations are not implemented.
 
 import std/[deques, tables]
+from std/posix import ClockId, Timer, SigEvent, Itimerspec,
+                      timer_create, timer_settime, timer_delete
 import stew/base10
 
 {.push raises: [].}
 
 # Read-side shutdown must wake both callbacks, even when the send buffer is
 # full. Unlike POLLHUP, POLLRDHUP is an explicitly requested poll event.
-var POLLRDHUP {.importc, header: "<poll.h>".}: cint
+var
+  POLLRDHUP {.importc, header: "<poll.h>".}: cint
+  PORT_SOURCE_TIMER {.importc, header: "<port.h>".}: cint
+  SIGEV_PORT {.importc, header: "<signal.h>".}: cint
 
 type
+  PortNotify {.importc: "port_notify_t", header: "<port.h>",
+               pure, final.} = object
+    portnfy_port: cint
+    portnfy_user: pointer
+
+  TimerRegistration = object
+    id: Timer
+    ident: int32
+
   PortRegistration = object
     generation: uint
     events: cint
@@ -44,6 +58,9 @@ type
     sigFd: cint
     signalMask: Sigset
     signals: Table[cint, int32]
+    # Timer cookies are unique generations, independent of reusable OS timer
+    # IDs and virtual selector IDs. Timers do not use FD association/rearming.
+    timers: Table[uint, TimerRegistration]
     virtualHoles: Deque[int32]
     virtualId: int32
 
@@ -204,6 +221,7 @@ proc new*(t: typedesc[Selector], T: typedesc): SelectResult[Selector[T]] =
     rearm: initDeque[RearmEntry](),
     queueEvents: newSeq[PortEvent](chronosInitialSize),
     signals: initTable[cint, int32](),
+    timers: initTable[uint, TimerRegistration](),
     virtualId: -1, virtualHoles: initDeque[int32]()
   ))
 
@@ -211,7 +229,12 @@ proc close2*[T](s: Selector[T]): SelectResult[void] =
   if s.portFd == -1:
     return err(EBADF)
   var errorCode = OSErrorCode(0)
-  if closeFd(s.portFd) == -1:
+  # Delete both armed and expired timers before destroying their event port.
+  for timer in s.timers.values:
+    if timer_delete(timer.id) == -1 and errorCode == OSErrorCode(0):
+      errorCode = osLastError()
+  s.timers.clear()
+  if closeFd(s.portFd) == -1 and errorCode == OSErrorCode(0):
     errorCode = osLastError()
   s.portFd = -1
   if s.sigFd != -1:
@@ -336,10 +359,51 @@ proc registerSignal*[T](s: Selector[T], signal: int,
                                param: signal, data: data)
   ok(cint(ident))
 
+proc registerTimer2*[T](s: Selector[T], timeout: int, oneshot: bool,
+                        data: T): SelectResult[cint] =
+  ## Register a native event-port timer with a positive millisecond interval.
+  ## Zero would disarm a POSIX timer, so non-positive intervals are rejected.
+  if s.portFd == -1:
+    return err(EBADF)
+  if timeout <= 0:
+    return err(EINVAL)
+  let
+    ident = ? s.getVirtualId()
+    generation = s.nextGeneration()
+    events = if oneshot: {Event.Timer, Event.Oneshot} else: {Event.Timer}
+  var
+    notify = PortNotify(portnfy_port: s.portFd,
+                        portnfy_user: cast[pointer](generation))
+    event: SigEvent
+    timer: Timer
+  event.sigev_notify = SIGEV_PORT
+  event.sigev_value.sival_ptr = addr notify
+  # timer_create copies the port notification data; no pointer to the stack or
+  # a GC-managed object is retained by the kernel.
+  if timer_create(ClockId(CLOCK_MONOTONIC), event, timer) == -1:
+    let errorCode = osLastError()
+    s.freeKey(ident)
+    return err(errorCode)
+  var
+    interval = Timespec(tv_sec: Time(timeout div 1000),
+                        tv_nsec: clong((timeout mod 1000) * 1_000_000))
+    value = Itimerspec(it_value: interval)
+    previous: Itimerspec
+  if not oneshot:
+    value.it_interval = interval
+  if timer_settime(timer, 0, value, previous) == -1:
+    let errorCode = osLastError()
+    discard timer_delete(timer)
+    s.freeKey(ident)
+    return err(errorCode)
+  s.timers[generation] = TimerRegistration(id: timer, ident: ident)
+  s.fds[ident] = SelectorKey[T](ident: ident, events: events,
+                               param: cast[int](generation), data: data)
+  ok(cint(ident))
+
 proc registerTimer*[T](s: Selector[T], timeout: int, oneshot: bool,
                        data: T): SelectResult[cint] =
-  # Chronos's dispatcher timers are implemented in userspace instead.
-  err(ENOTSUP)
+  s.registerTimer2(timeout, oneshot, data)
 
 proc registerProcess*[T](s: Selector[T], pid: int,
                          data: T): SelectResult[cint] =
@@ -351,7 +415,16 @@ proc registerVnode2*[T](s: Selector[T], fd: cint, events: set[Event],
 
 proc unregister2*[T](s: Selector[T], fd: cint): SelectResult[void] =
   let key = s.getKey(int32(fd))
-  if Event.Signal in key.events:
+  if Event.Timer in key.events:
+    let generation = cast[uint](key.param)
+    s.timers.withValue(generation, timer):
+      if timer_delete(timer[].id) == -1:
+        return err(osLastError())
+    do:
+      raiseAssert "Timer is not registered in the selector"
+    s.timers.del(generation)
+    s.freeKey(fd)
+  elif Event.Signal in key.events:
     let sig = cint(key.param)
     var mask = s.signalMask
     if sigdelset(mask, sig) == -1:
@@ -423,6 +496,19 @@ proc prepareKey[T](s: Selector[T], event: PortEvent,
     ok(Opt.none(ReadyKey))
   else:
     ok(Opt.some(ready))
+
+proc prepareTimerKey[T](s: Selector[T], event: PortEvent): Opt[ReadyKey] =
+  s.timers.withValue(cast[uint](event.portev_user), timer):
+    s.fds.withValue(timer[].ident, key):
+      if Event.Finished notin key[].events:
+        var events = {Event.Timer}
+        if Event.Oneshot in key[].events:
+          key[].events.incl(Event.Finished)
+          events.incl({Event.Oneshot, Event.Finished})
+        # portev_events is an expiration count, not a poll() mask. Coalesced
+        # expirations are reported as one readiness notification, like epoll.
+        return Opt.some(ReadyKey(fd: key[].ident, events: events))
+  Opt.none(ReadyKey)
 
 proc remainingTimeout(start: Timespec, timeout: int): SelectResult[Timespec] =
   var now: Timespec
@@ -500,6 +586,12 @@ proc selectInto2*[T](s: Selector[T], timeout: int,
   var n = 0
   for i in 0 ..< int(count):
     let event = s.queueEvents[i]
+    if event.portev_source == cushort(PORT_SOURCE_TIMER):
+      let ready = s.prepareTimerKey(event)
+      if ready.isSome():
+        readyKeys[n] = ready.get()
+        inc(n)
+      continue
     if event.portev_source != cushort(PORT_SOURCE_FD) or
         event.portev_object > uint(high(int32)):
       continue

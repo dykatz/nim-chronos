@@ -12,7 +12,8 @@ when defined(solaris):
   {.passl: "-lsocket".}
   import std/[unittest, monotimes, times, sets]
   import ../chronos/[selectors2, osdefs, osutils]
-  from std/posix import dup2, Sigaction, sigaction, ualarm, Useconds
+  from std/posix import dup2, Sigaction, sigaction, ualarm, Useconds,
+                        Timer, Itimerspec, timer_gettime
   from std/os import sleep
   when compileOption("threads"):
     from std/posix import pthread_self, pthread_kill
@@ -315,10 +316,135 @@ when defined(solaris):
           check ready[0].events == {Event.User}
         s.unregister(event)
 
+    test "One-shot timer reports completion only once":
+      let s = newSelector[int]()
+      defer: s.close()
+      let start = getMonoTime()
+      let timer = s.registerTimer2(25, true, 12).get()
+      check timer < -1
+      check s.contains(timer)
+      check s.setData(timer, 34)
+      let ready = s.select(1000)
+      require ready.len == 1
+      check ready[0] == ReadyKey(fd: timer,
+                                events: {Event.Timer, Event.Oneshot, Event.Finished})
+      check (getMonoTime() - start).inMilliseconds >= 20
+      s.withData(timer, data):
+        check data[] == 34
+      check s.select(40).len == 0
+      s.unregister(timer)
+      check not s.contains(timer)
+
+    test "Subsecond periodic timer requires no FD rearming":
+      let s = newSelector[int]()
+      defer: s.close()
+      let timer = s.registerTimer(5, false, 0).get()
+      for i in 0 ..< 5:
+        let ready = s.select(1000)
+        require ready.len == 1
+        check ready[0] == ReadyKey(fd: timer, events: {Event.Timer})
+      # Several expirations may coalesce; their count is not a poll event mask.
+      sleep(50)
+      let ready = s.select(1000)
+      require ready.len == 1
+      check ready[0] == ReadyKey(fd: timer, events: {Event.Timer})
+      s.unregister(timer)
+      check s.select(20).len == 0
+
+    test "Periodic intervals retain both seconds and fractional milliseconds":
+      let s = newSelector[int]()
+      defer: s.close()
+      let timer = s.registerTimer(1005, false, 0).get()
+      var
+        event: PortEvent
+        count = 1.cuint
+        timeout = Timespec(tv_sec: osdefs.Time(2), tv_nsec: 0)
+        remaining: Itimerspec
+      require port_getn(s.getFd(), addr event, 1, addr count, addr timeout) == 0
+      require count == 1
+      require timer_gettime(Timer(event.portev_object), remaining) == 0
+      check int64(remaining.it_interval.tv_sec) == 1
+      check remaining.it_interval.tv_nsec == 5_000_000
+      s.unregister(timer)
+
+    test "Timer cancellation before expiry and after expiry is queued":
+      let s = newSelector[int]()
+      defer: s.close()
+      for queued in [false, true]:
+        let timer = s.registerTimer(if queued: 1 else: 5000, true, 0).get()
+        if queued:
+          sleep(20)
+        s.unregister(timer)
+        # Reusing a virtual ID must not deliver an obsolete timer event.
+        let replacement = s.registerTimer(5000, true, 1).get()
+        check replacement == timer
+        check s.select(20).len == 0
+        s.unregister(replacement)
+
+    test "Timers and descriptors share bounded result buffers":
+      let s = newSelector[int]()
+      defer: s.close()
+      let fds = makePipe()
+      defer: closePipe(fds)
+      var expected = initHashSet[int]()
+      for i in 0 ..< 8:
+        expected.incl(int(s.registerTimer(2, true, i).get()))
+      s.registerHandle(fds[0], {Event.Read}, 0)
+      expected.incl(int(fds[0]))
+      put(fds[1])
+      sleep(20)
+      var ready: array[2, ReadyKey]
+      while expected.len > 0:
+        let count = s.selectInto(1000, ready)
+        require count > 0
+        for i in 0 ..< count:
+          check ready[i].fd in expected
+          expected.excl(ready[i].fd)
+          if ready[i].fd == int(fds[0]):
+            check ready[i].events == {Event.Read}
+          else:
+            check ready[i].events == {Event.Timer, Event.Oneshot, Event.Finished}
+          s.unregister(cint(ready[i].fd))
+      check s.select(0).len == 0
+
+    test "Unregister and close delete native timers, including expired ones":
+      for oneshot in [false, true]:
+        for closeSelector in [false, true]:
+          let s = newSelector[int]()
+          let timer = s.registerTimer(2, oneshot, 0).get()
+          # Retrieve the native event directly to inspect the OS timer's ID.
+          var
+            event: PortEvent
+            count = 1.cuint
+            timeout = Timespec(tv_sec: osdefs.Time(1), tv_nsec: 0)
+            remaining: Itimerspec
+          require port_getn(s.getFd(), addr event, 1, addr count, addr timeout) == 0
+          require count == 1
+          let nativeId = Timer(event.portev_object)
+          check timer_gettime(nativeId, remaining) == 0
+          if closeSelector:
+            s.close()
+          else:
+            s.unregister(timer)
+          check timer_gettime(nativeId, remaining) == -1
+          check osLastError() == EINVAL
+          if not closeSelector:
+            s.close()
+
+    test "Invalid timer intervals and registration failure leave no key":
+      let s = newSelector[int]()
+      check s.registerTimer(0, true, 0).error() == EINVAL
+      check s.registerTimer(-1, false, 0).error() == EINVAL
+      check not s.contains(-2.cint)
+      require closeFd(s.getFd()) == 0 # Inject a native timer_create failure.
+      check s.registerTimer(1, true, 0).isErr()
+      check not s.contains(-2.cint)
+      check s.close2().error() == EBADF
+      check s.registerTimer(1, true, 0).error() == EBADF
+
     test "Deferred features return ENOTSUP":
       let s = newSelector[int]()
       defer: s.close()
-      check s.registerTimer(1, false, 0).error() == ENOTSUP
       check s.registerProcess(1, 0).error() == ENOTSUP
       check s.registerVnode2(0, {}, 0).error() == ENOTSUP
 
