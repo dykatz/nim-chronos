@@ -445,7 +445,6 @@ when defined(solaris):
     test "Deferred features return ENOTSUP":
       let s = newSelector[int]()
       defer: s.close()
-      check s.registerProcess(1, 0).error() == ENOTSUP
       check s.registerVnode2(0, {}, 0).error() == ENOTSUP
 
     test "Signals share a signalfd and work with a one-element buffer":

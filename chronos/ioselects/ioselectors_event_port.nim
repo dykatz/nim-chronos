@@ -7,13 +7,13 @@
 #
 # This module implements illumos event ports. Selector operations (including
 # signal registration and cleanup) belong to the dispatcher's thread. Only
-# SelectEvent handles may be shared with other threads. Signals are reported as
-# Event.Signal; dispatcher/future capability guards must separately enable their
-# delivery. Process and vnode registrations are not implemented.
+# SelectEvent handles may be shared with other threads. Native timer, signal
+# and process readiness is exposed at selector level; dispatcher/future
+# capability guards are integrated separately. Vnodes are not implemented.
 
 import std/[deques, tables]
 from std/posix import ClockId, Timer, SigEvent, Itimerspec,
-                      timer_create, timer_settime, timer_delete
+                      timer_create, timer_settime, timer_delete, open, O_RDONLY
 import stew/base10
 
 {.push raises: [].}
@@ -38,6 +38,8 @@ type
   PortRegistration = object
     generation: uint
     events: cint
+    # An enabled zero mask is meaningful for /proc: wait only for termination.
+    enabled: bool
     armed: bool
 
   RearmEntry = object
@@ -61,6 +63,7 @@ type
     # Timer cookies are unique generations, independent of reusable OS timer
     # IDs and virtual selector IDs. Timers do not use FD association/rearming.
     timers: Table[uint, TimerRegistration]
+    processes: Table[int, int32] # PID -> selector-owned /proc descriptor
     virtualHoles: Deque[int32]
     virtualId: int32
 
@@ -181,12 +184,13 @@ proc dissociate[T](s: Selector[T], fd: int32): SelectResult[void] =
   ok()
 
 proc addDescriptor[T](s: Selector[T], fd: int32,
-                      events: cint): SelectResult[void] =
+                      events: cint, enabled = true): SelectResult[void] =
   doAssert(not s.registrations.contains(fd),
            "Descriptor [" & fd.toString() & "] is already registered!")
   let registration = PortRegistration(
-    generation: s.nextGeneration(), events: events, armed: events != 0)
-  if events != 0:
+    generation: s.nextGeneration(), events: events,
+    enabled: enabled, armed: enabled)
+  if enabled:
     ? s.associate(fd, registration)
   s.registrations[fd] = registration
   ok()
@@ -196,7 +200,7 @@ proc rearmDescriptors[T](s: Selector[T]): SelectResult[void] =
     let entry = s.rearm.peekFirst()
     s.registrations.withValue(entry.fd, registration):
       if registration[].generation == entry.generation and
-          not registration[].armed and registration[].events != 0:
+          not registration[].armed and registration[].enabled:
         # Keep this entry queued on failure, so callers can retry or unregister.
         ? s.associate(entry.fd, registration[])
         registration[].armed = true
@@ -222,6 +226,7 @@ proc new*(t: typedesc[Selector], T: typedesc): SelectResult[Selector[T]] =
     queueEvents: newSeq[PortEvent](chronosInitialSize),
     signals: initTable[cint, int32](),
     timers: initTable[uint, TimerRegistration](),
+    processes: initTable[int, int32](),
     virtualId: -1, virtualHoles: initDeque[int32]()
   ))
 
@@ -237,6 +242,10 @@ proc close2*[T](s: Selector[T]): SelectResult[void] =
   if closeFd(s.portFd) == -1 and errorCode == OSErrorCode(0):
     errorCode = osLastError()
   s.portFd = -1
+  for fd in s.processes.values:
+    if closeFd(fd) == -1 and errorCode == OSErrorCode(0):
+      errorCode = osLastError()
+  s.processes.clear()
   if s.sigFd != -1:
     if closeFd(s.sigFd) == -1 and errorCode == OSErrorCode(0):
       errorCode = osLastError()
@@ -290,7 +299,7 @@ proc registerHandle2*[T](s: Selector[T], fd: cint, events: set[Event],
   doAssert(events <= {Event.Read, Event.Write}, "Unsupported descriptor events")
   doAssert(not s.checkKey(fd),
            "Descriptor [" & fd.toString() & "] is already registered!")
-  ? s.addDescriptor(fd, toPortEvents(events))
+  ? s.addDescriptor(fd, toPortEvents(events), enabled = events != {})
   s.fds[fd] = SelectorKey[T](ident: fd, events: events, data: data)
   ok()
 
@@ -303,7 +312,7 @@ proc updateHandle2*[T](s: Selector[T], fd: cint,
     if key[].events != events:
       let registration = PortRegistration(
         generation: s.nextGeneration(), events: toPortEvents(events),
-        armed: events != {})
+        enabled: events != {}, armed: events != {})
       if events == {}:
         ? s.dissociate(fd)
       else:
@@ -405,9 +414,50 @@ proc registerTimer*[T](s: Selector[T], timeout: int, oneshot: bool,
                        data: T): SelectResult[cint] =
   s.registerTimer2(timeout, oneshot, data)
 
+proc registerProcess2*[T](s: Selector[T], pid: int,
+                          data: T): SelectResult[cint] =
+  ## Watch a process for exit without tracing, signaling or reaping it.
+  ## The returned handle owns a /proc descriptor until unregister or close.
+  if s.portFd == -1:
+    return err(EBADF)
+  if pid <= 0 or pid > int(high(cint)):
+    return err(EINVAL)
+  doAssert(not s.processes.contains(pid), "Process is already registered!")
+  # psinfo is world-readable, survives exec (including set-ID exec), and stays
+  # present for zombies. Holding it pins the process identity across PID reuse.
+  let path = "/proc/" & Base10.toString(uint32(pid)) & "/psinfo"
+  let fd = cint(handleEintr(open(path.cstring,
+                                O_RDONLY or O_NONBLOCK or O_CLOEXEC)))
+  if fd == -1:
+    let errorCode = osLastError()
+    # Match kqueue's missing-process error, including the exit/open race.
+    return err(if errorCode == ENOENT: ESRCH else: errorCode)
+
+  # Kernel/system processes cannot be polled through /proc. Detect this at
+  # registration rather than accepting a watch which can never report an exit.
+  var probe = TPollfd(fd: fd, events: 0)
+  if handleEintr(poll(addr probe, Tnfds(1), 0)) == -1:
+    let errorCode = osLastError()
+    discard closeFd(fd)
+    return err(errorCode)
+  if (probe.revents and (POLLERR or POLLNVAL)) != 0:
+    discard closeFd(fd)
+    return err(if (probe.revents and POLLNVAL) != 0: ENOTSUP else: EAGAIN)
+
+  # A zero mask ignores readability and debugger/job-control stops. POLLHUP
+  # still reports termination, even if the process exits before association.
+  let res = s.addDescriptor(fd, 0)
+  if res.isErr():
+    discard closeFd(fd)
+    return err(res.error())
+  s.processes[pid] = fd
+  s.fds[fd] = SelectorKey[T](ident: fd,
+    events: {Event.Process, Event.Oneshot}, param: pid, data: data)
+  ok(fd)
+
 proc registerProcess*[T](s: Selector[T], pid: int,
                          data: T): SelectResult[cint] =
-  err(ENOTSUP)
+  s.registerProcess2(pid, data)
 
 proc registerVnode2*[T](s: Selector[T], fd: cint, events: set[Event],
                         data: T): SelectResult[cint] =
@@ -415,7 +465,14 @@ proc registerVnode2*[T](s: Selector[T], fd: cint, events: set[Event],
 
 proc unregister2*[T](s: Selector[T], fd: cint): SelectResult[void] =
   let key = s.getKey(int32(fd))
-  if Event.Timer in key.events:
+  if Event.Process in key.events:
+    s.processes.del(key.param)
+    s.registrations.del(fd)
+    s.freeKey(fd)
+    # close removes queued notifications as well as any live association.
+    if closeFd(fd) == -1:
+      return err(osLastError())
+  elif Event.Timer in key.events:
     let generation = cast[uint](key.param)
     s.timers.withValue(generation, timer):
       if timer_delete(timer[].id) == -1:
@@ -475,6 +532,24 @@ proc prepareKey[T](s: Selector[T], event: PortEvent,
     return ok(Opt.none(ReadyKey))
 
   let key = s.getKey(fd)
+  if Event.Process in key.events:
+    if Event.Finished in key.events:
+      return ok(Opt.none(ReadyKey))
+    if (event.portev_events and POLLHUP) != 0:
+      s.fds.withValue(fd, processKey):
+        processKey[].events.incl(Event.Finished)
+      s.registrations.withValue(fd, registration):
+        # Process watches are one-shot. Do not rearm the permanent hangup.
+        registration[].enabled = false
+      return ok(Opt.some(ReadyKey(fd: fd,
+        events: {Event.Process, Event.Oneshot, Event.Finished})))
+    # An invalidated /proc file is not evidence that the process exited.
+    if (event.portev_events and POLLNVAL) != 0:
+      return err(EBADF)
+    if (event.portev_events and POLLERR) != 0:
+      return err(EAGAIN)
+    return ok(Opt.none(ReadyKey))
+
   var ready = ReadyKey(fd: fd)
   if (event.portev_events and (POLLERR or POLLHUP or POLLNVAL or POLLRDHUP)) != 0:
     ready.events.incl(Event.Error)
@@ -598,7 +673,7 @@ proc selectInto2*[T](s: Selector[T], timeout: int,
     let fd = int32(event.portev_object)
     s.registrations.withValue(fd, registration):
       if registration[].generation == cast[uint](event.portev_user) and
-          registration[].events != 0:
+          registration[].enabled:
         let ready = ? s.prepareKey(event, fd)
         if ready.isSome():
           readyKeys[n] = ready.get()
