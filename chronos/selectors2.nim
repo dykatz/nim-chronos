@@ -257,7 +257,7 @@ else:
     var err = newException(IOSelectorsException, msg)
     raise err
 
-  when chronosEventEngine in ["epoll", "kqueue"]:
+  when chronosEventEngine in ["epoll", "kqueue", "event_port"]:
     const hasThreadSupport = compileOption("threads")
 
     proc blockSignals(newmask: Sigset,
@@ -306,6 +306,8 @@ else:
     include ./ioselects/ioselectors_epoll
   elif chronosEventEngine == "kqueue":
     include ./ioselects/ioselectors_kqueue
+  elif chronosEventEngine == "event_port":
+    include ./ioselects/ioselectors_event_port
   elif chronosEventEngine == "poll":
     include ./ioselects/ioselectors_poll
   else:

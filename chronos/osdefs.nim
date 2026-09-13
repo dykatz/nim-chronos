@@ -1143,7 +1143,7 @@ elif defined(linux):
        cdecl, importc: "signalfd", header: "<sys/signalfd.h>".}
 
 elif defined(freebsd) or defined(openbsd) or defined(netbsd) or
-     defined(dragonfly) or defined(haiku):
+     defined(dragonfly) or defined(haiku) or defined(solaris):
   from std/posix import close, shutdown, socket, getpeername, getsockname,
                         recvfrom, sendto, send, bindSocket, recv, connect,
                         unlink, listen, getaddrinfo, gai_strerror, getrlimit,
@@ -1202,7 +1202,7 @@ elif defined(freebsd) or defined(openbsd) or defined(netbsd) or
                           header: "<netinet/in.h>".}: cint
 
 when defined(linux) or defined(freebsd) or defined(openbsd) or
-     defined(netbsd) or defined(dragonfly):
+     defined(netbsd) or defined(dragonfly) or defined(solaris):
 
   proc pipe2*(a: array[0..1, cint], flags: cint): cint {.
        importc, header: "<unistd.h>", sideEffect.}
@@ -1271,11 +1271,19 @@ elif defined(haiku):
     O_CLOEXEC* = 0x40
     POSIX_SPAWN_USEVFORK* = 0x00
     IPV6_V6ONLY* = 30
-
+elif defined(solaris):
+  const
+    SOCK_CLOEXEC* = 0x80000
+    SOCK_NONBLOCK* = 0x100000
+    TCP_NODELAY* = cint(1)
+    IPPROTO_TCP* = 6
+    O_CLOEXEC* = 0x800000
+    POSIX_SPAWN_USEVFORK* = 0
+    IPV6_V6ONLY* = 0x27
 
 when defined(linux) or defined(macos) or defined(macosx) or defined(freebsd) or
      defined(openbsd) or defined(netbsd) or defined(dragonfly) or
-     defined(haiku):
+     defined(haiku) or defined(solaris):
 
   const
     POSIX_SPAWN_RESETIDS* = 0x01
@@ -1698,6 +1706,119 @@ elif defined(haiku):
       sdl_alen*: byte
       sdl_slen*: byte
       sdl_data*: array[46, byte]
+
+  proc getIfAddrs*(ifap: ptr PIfAddrs): cint {.importc: "getifaddrs",
+       header: """#include <sys/types.h>
+                  #include <sys/socket.h>
+                  #include <ifaddrs.h>""".}
+  proc freeIfAddrs*(ifap: ptr IfAddrs) {.importc: "freeifaddrs",
+       header: """#include <sys/types.h>
+                  #include <sys/socket.h>
+                  #include <ifaddrs.h>""".}
+
+elif defined(solaris):
+  const
+    AF_LINK* = 25
+    IFF_UP* = 1
+    IFF_RUNNING* = 0x40
+
+    PF_ROUTE* = cint(24)
+    RTM_GET* = 0x04'u8
+    RTF_UP* = 0x01
+    RTF_GATEWAY* = 0x02
+    RTM_VERSION* = 3'u8
+
+    RTA_DST* = 0x01
+    RTA_GATEWAY* = 0x02
+
+    WNOHANG* = 1
+
+  type
+    IfAddrs* {.importc: "struct ifaddrs", header: "<ifaddrs.h>",
+               pure, final.} = object
+      ifa_next* {.importc: "ifa_next".}: ptr IfAddrs
+      ifa_name* {.importc: "ifa_name".}: ptr cchar
+      ifa_flags* {.importc: "ifa_flags".}: cuint
+      ifa_addr* {.importc: "ifa_addr".}: ptr SockAddr
+      ifa_netmask* {.importc: "ifa_netmask".}: ptr SockAddr
+      ifa_dstaddr* {.importc: "ifa_dstaddr".}: ptr SockAddr
+      ifa_data* {.importc: "ifa_data".}: pointer
+
+    PIfAddrs* = ptr IfAddrs
+
+    IfData* {.importc: "struct if_data", header: "<net/if.h>",
+              pure, final.} = object
+      ifi_type* {.importc: "ifi_type".}: byte
+      ifi_typelen* {.importc: "ifi_typelen".}: byte
+      ifi_physical* {.importc: "ifi_physical".}: byte
+      ifi_addrlen* {.importc: "ifi_addrlen".}: byte
+      ifi_hdrlen* {.importc: "ifi_hdrlen".}: byte
+      ifi_recvquota* {.importc: "ifi_recvquota".}: byte
+      ifi_xmitquota* {.importc: "ifi_xmitquota".}: byte
+      ifi_unused1* {.importc: "ifi_unused1".}: byte
+      ifi_mtu* {.importc: "ifi_mtu".}: uint32
+      ifi_metric* {.importc: "ifi_metric".}: uint32
+      ifi_baudrate* {.importc: "ifi_baudrate".}: uint32
+      ifi_ipackets* {.importc: "ifi_ipackets".}: uint32
+      ifi_ierrors* {.importc: "ifi_ierrors".}: uint32
+      ifi_opackets* {.importc: "ifi_opackets".}: uint32
+      ifi_oerrors* {.importc: "ifi_oerrors".}: uint32
+      ifi_collisions* {.importc: "ifi_collisions".}: uint32
+      ifi_ibytes* {.importc: "ifi_ibytes".}: uint32
+      ifi_obytes* {.importc: "ifi_obytes".}: uint32
+      ifi_imcasts* {.importc: "ifi_imcasts".}: uint32
+      ifi_omcasts* {.importc: "ifi_omcasts".}: uint32
+      ifi_iqdrops* {.importc: "ifi_iqdrops".}: uint32
+      ifi_noproto* {.importc: "ifi_noproto".}: uint32
+      ifi_recvtiming* {.importc: "ifi_recvtiming".}: uint32
+      ifi_xmittiming* {.importc: "ifi_xmittiming".}: uint32
+      ifi_lastchange* {.importc: "ifi_lastchange".}: Timeval
+      ifi_unused2* {.importc: "ifi_unused2".}: uint32
+      ifi_hwassist* {.importc: "ifi_hwassist".}: uint32
+      ifi_reserved1* {.importc: "ifi_reserved1".}: uint32
+      ifi_reserved2* {.importc: "ifi_reserved2".}: uint32
+
+    Sockaddr_dl* = object
+      sdl_len*: byte
+      sdl_family*: byte
+      sdl_index*: uint16
+      sdl_type*: byte
+      sdl_nlen*: byte
+      sdl_alen*: byte
+      sdl_slen*: byte
+      sdl_data*: array[12, byte]
+
+    RtMetrics* = object
+      rmx_locks*: uint32
+      rmx_mtu*: uint32
+      rmx_hopcount*: uint32
+      rmx_expire*: int32
+      rmx_recvpipe*: uint32
+      rmx_sendpipe*: uint32
+      rmx_ssthresh*: uint32
+      rmx_rtt*: uint32
+      rmx_rttvar*: uint32
+      rmx_pksent*: uint32
+      rmx_state*: uint32
+      rmx_filler*: array[3, uint32]
+
+    RtMsgHeader* = object
+      rtm_msglen*: uint16
+      rtm_version*: byte
+      rtm_type*: byte
+      rtm_index*: uint16
+      rtm_flags*: cint
+      rtm_addrs*: cint
+      rtm_pid*: Pid
+      rtm_seq*: cint
+      rtm_errno*: cint
+      rtm_use*: cint
+      rtm_inits*: uint32
+      rtm_rmx*: RtMetrics
+
+    RtMessage* = object
+      rtm*: RtMsgHeader
+      space*: array[512, byte]
 
   proc getIfAddrs*(ifap: ptr PIfAddrs): cint {.importc: "getifaddrs",
        header: """#include <sys/types.h>

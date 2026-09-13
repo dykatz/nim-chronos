@@ -129,3 +129,25 @@ elif defined(macosx):
         if err == EAGAIN: int(o)
         else: 0
       -1
+
+elif defined(solaris):
+  {.passL: "-lsendfile".}
+
+  type
+    Moff* {.importc: "off_t", header: "<sys/types.h>".} = int
+    Mssize_t {.importc: "ssize_t", header: "<sys/types.h>".} = int
+
+  proc osSendFile*(outfd, infd: cint, offset: ptr Moff,
+                   count: csize_t): Mssize_t
+      {.importc: "sendfile", header: "<sys/sendfile.h>".}
+
+  proc sendfile*(outfd, infd: int, offset: int, count: var int): int =
+    var o = offset
+    let res = int(osSendFile(
+      cint(outfd), cint(infd), cast[ptr Moff](addr o), csize_t(count)))
+    if res >= 0:
+      count = res
+      0
+    else:
+      count = 0
+      -1

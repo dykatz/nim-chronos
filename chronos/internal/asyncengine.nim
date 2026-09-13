@@ -1045,7 +1045,7 @@ elif defined(macosx) or defined(freebsd) or defined(netbsd) or
     ## You can execute ``aftercb`` before actual socket close operation.
     closeSocket(fd, aftercb)
 
-  when chronosEventEngine in ["epoll", "kqueue"]:
+  when chronosEventEngine in ["epoll", "kqueue", "event_port"]:
     type
       ProcessHandle* = distinct int
       SignalHandle* = distinct int

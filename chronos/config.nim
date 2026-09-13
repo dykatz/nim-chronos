@@ -83,6 +83,8 @@ const
           defined(freebsd) or defined(netbsd) or defined(openbsd) or
           defined(dragonfly) or defined(haiku):
       "kqueue"
+    elif defined(solaris):
+      "event_port"
     elif defined(posix):
       "poll"
     else:
