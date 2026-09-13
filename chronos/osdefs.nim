@@ -1201,6 +1201,63 @@ elif defined(freebsd) or defined(openbsd) or defined(netbsd) or
   var IP_MULTICAST_TTL* {.importc: "IP_MULTICAST_TTL",
                           header: "<netinet/in.h>".}: cint
 
+when defined(solaris):
+  from std/posix import sigdelset, sigprocmask, SIG_SETMASK
+  export sigdelset, sigprocmask, SIG_SETMASK
+
+  const
+    PORT_SOURCE_FD* = cint(4)
+
+    # illumos uses Linux-compatible signalfd flags, not its native O_* values.
+    SFD_CLOEXEC* = cint(0x80000)
+    SFD_NONBLOCK* = cint(0x800)
+
+  type
+    PortEvent* {.importc: "port_event_t", header: "<port.h>",
+                 pure, final.} = object
+      portev_events*: cint
+      portev_source*: cushort
+      portev_pad*: cushort
+      portev_object*: uint # uintptr_t
+      portev_user*: pointer
+
+    SignalFdInfo* {.importc: "struct signalfd_siginfo",
+                    header: "<sys/signalfd.h>", pure, final.} = object
+      ssi_signo*: uint32
+      ssi_errno*: int32
+      ssi_code*: int32
+      ssi_pid*: uint32
+      ssi_uid*: uint32
+      ssi_fd*: int32
+      ssi_tid*: uint32
+      ssi_band*: uint32
+      ssi_overrun*: uint32
+      ssi_trapno*: uint32
+      ssi_status*: int32
+      ssi_int*: int32
+      ssi_ptr*: uint64
+      ssi_utime*: uint64
+      ssi_stime*: uint64
+      ssi_addr*: uint64
+      pad* {.importc: "ssi_pad".}: array[0..47, uint8]
+
+  proc port_create*(): cint {.
+       cdecl, importc, header: "<port.h>", sideEffect.}
+
+  proc port_associate*(port: cint, source: cint, objectId: uint, events: cint,
+                        user: pointer): cint {.
+       cdecl, importc, header: "<port.h>", sideEffect.}
+
+  proc port_dissociate*(port: cint, source: cint, objectId: uint): cint {.
+       cdecl, importc, header: "<port.h>", sideEffect.}
+
+  proc port_getn*(port: cint, events: ptr PortEvent, maxEvents: cuint,
+                   numEvents: ptr cuint, timeout: ptr Timespec): cint {.
+       cdecl, importc, header: "<port.h>", sideEffect.}
+
+  proc signalfd*(fd: cint, mask: var Sigset, flags: cint): cint {.
+       cdecl, importc, header: "<sys/signalfd.h>", sideEffect.}
+
 when defined(linux) or defined(freebsd) or defined(openbsd) or
      defined(netbsd) or defined(dragonfly) or defined(solaris):
 
