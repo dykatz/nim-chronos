@@ -1143,7 +1143,7 @@ elif defined(linux):
        cdecl, importc: "signalfd", header: "<sys/signalfd.h>".}
 
 elif defined(freebsd) or defined(openbsd) or defined(netbsd) or
-     defined(dragonfly) or defined(haiku) or defined(solaris):
+     defined(dragonfly) or defined(haiku):
   from std/posix import close, shutdown, socket, getpeername, getsockname,
                         recvfrom, sendto, send, bindSocket, recv, connect,
                         unlink, listen, getaddrinfo, gai_strerror, getrlimit,
@@ -1201,9 +1201,63 @@ elif defined(freebsd) or defined(openbsd) or defined(netbsd) or
   var IP_MULTICAST_TTL* {.importc: "IP_MULTICAST_TTL",
                           header: "<netinet/in.h>".}: cint
 
-when defined(solaris):
-  from std/posix import sigdelset, sigprocmask, SIG_SETMASK
-  export sigdelset, sigprocmask, SIG_SETMASK
+elif defined(solaris):
+  from std/posix import close, shutdown, socket, getpeername, getsockname,
+                        recvfrom, sendto, send, bindSocket, recv, connect,
+                        unlink, listen, getaddrinfo, gai_strerror, getrlimit,
+                        setrlimit, getpid, pthread_sigmask, sigemptyset,
+                        sigaddset, sigismember, fcntl, accept, pipe, write,
+                        signal, read, setsockopt, getsockopt, clock_gettime,
+                        getcwd, chdir, waitpid, kill, select, pselect,
+                        socketpair, poll, freeAddrInfo, sigdelset, sigprocmask,
+                        Timeval, Timespec, Pid, Mode, Time, Sigset, SockAddr,
+                        SockLen, Sockaddr_storage, Sockaddr_in, Sockaddr_in6,
+                        Sockaddr_un, SocketHandle, AddrInfo, RLimit, TFdSet,
+                        Suseconds, TPollfd, Tnfds,
+                        FD_CLR, FD_ISSET, FD_SET, FD_ZERO,
+                        F_GETFL, F_SETFL, F_GETFD, F_SETFD, FD_CLOEXEC,
+                        O_NONBLOCK, SOL_SOCKET, SOCK_RAW, SOCK_DGRAM,
+                        SOCK_STREAM, MSG_NOSIGNAL, MSG_PEEK,
+                        AF_INET, AF_INET6, AF_UNIX, SO_ERROR, SO_REUSEADDR,
+                        SO_BROADCAST, IPPROTO_IP, IPPROTO_IPV6,
+                        IPV6_MULTICAST_HOPS, SOCK_DGRAM, RLIMIT_NOFILE,
+                        SIG_BLOCK, SIG_UNBLOCK, CLOCK_MONOTONIC, CLOCK_REALTIME,
+                        SHUT_RD, SHUT_WR, SHUT_RDWR, SIG_SETMASK,
+                        POLLIN, POLLOUT, POLLERR, POLLHUP, POLLNVAL,
+                        SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGTRAP, SIGABRT,
+                        SIGBUS, SIGFPE, SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2,
+                        SIGPIPE, SIGALRM, SIGTERM, SIGPIPE, SIGCHLD, SIGSTOP,
+                        SIGCONT
+
+  export close, shutdown, socket, getpeername, getsockname,
+         recvfrom, sendto, send, bindSocket, recv, connect,
+         unlink, listen, getaddrinfo, gai_strerror, getrlimit,
+         setrlimit, getpid, pthread_sigmask, sigemptyset,
+         sigaddset, sigismember, fcntl, accept, pipe, write,
+         signal, read, setsockopt, getsockopt, clock_gettime,
+         getcwd, chdir, waitpid, kill, select, pselect,
+         socketpair, poll, freeAddrInfo, sigdelset, sigprocmask,
+         Timeval, Timespec, Pid, Mode, Time, Sigset, SockAddr,
+         SockLen, Sockaddr_storage, Sockaddr_in, Sockaddr_in6,
+         Sockaddr_un, SocketHandle, AddrInfo, RLimit, TFdSet,
+         Suseconds, TPollfd, Tnfds,
+         FD_CLR, FD_ISSET, FD_SET, FD_ZERO,
+         F_GETFL, F_SETFL, F_GETFD, F_SETFD, FD_CLOEXEC,
+         O_NONBLOCK, SOL_SOCKET, SOCK_RAW, SOCK_DGRAM,
+         SOCK_STREAM, MSG_NOSIGNAL, MSG_PEEK,
+         AF_INET, AF_INET6, AF_UNIX, SO_ERROR, SO_REUSEADDR,
+         SO_BROADCAST, IPPROTO_IP, IPPROTO_IPV6,
+         IPV6_MULTICAST_HOPS, SOCK_DGRAM, RLIMIT_NOFILE,
+         SIG_BLOCK, SIG_UNBLOCK, CLOCK_MONOTONIC, CLOCK_REALTIME,
+         SHUT_RD, SHUT_WR, SHUT_RDWR, SIG_SETMASK,
+         POLLIN, POLLOUT, POLLERR, POLLHUP, POLLNVAL,
+         SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGTRAP, SIGABRT,
+         SIGBUS, SIGFPE, SIGKILL, SIGUSR1, SIGSEGV, SIGUSR2,
+         SIGPIPE, SIGALRM, SIGTERM, SIGPIPE, SIGCHLD, SIGSTOP,
+         SIGCONT
+
+  var IP_MULTICAST_TTL* {.importc: "IP_MULTICAST_TTL",
+                          header: "<netinet/in.h>".}: cint
 
   const
     PORT_SOURCE_FD* = cint(4)

@@ -1524,13 +1524,19 @@ suite "Stream Transport test suite":
     server2.start()
     server3.start()
 
-    # It works cause even though there's an active listening socket bound to
-    # dst3, we are using ReusePort
+    let localAddress =
+      when declared(SO_REUSEPORT):
+        # ReusePort allows binding to an active listening socket's address.
+        server3.localAddress()
+      else:
+        # ReusePort is ignored, so use an ephemeral port for each connection.
+        initTAddress("127.0.0.1:0")
+
     var transp1 = await connect(
-      server1.localAddress(), localAddress = server3.localAddress(),
+      server1.localAddress(), localAddress = localAddress,
       flags = {SocketFlags.ReusePort})
     var transp2 = await connect(
-      server2.localAddress(), localAddress = server3.localAddress(),
+      server2.localAddress(), localAddress = localAddress,
       flags = {SocketFlags.ReusePort})
 
     expect(TransportOsError):

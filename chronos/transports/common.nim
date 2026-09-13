@@ -28,7 +28,7 @@ const
     ## Default buffer size for datagram transports
 type
   ServerFlags* = enum
-    ## Server's flags
+    ## Server's flags. ReusePort is ignored on platforms without SO_REUSEPORT.
     ReuseAddr, ReusePort, TcpNoDelay, NoAutoRead, GCUserData, FirstPipe,
     NoPipeFlash, Broadcast, V4Mapped
 

@@ -335,11 +335,12 @@ when defined(windows):
           closeSocket(localSock)
         raiseTransportOsError(error)
 
-    if ServerFlags.ReusePort in flags:
-      setSockOpt2(localSock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
-        if sock == asyncInvalidSocket:
-          closeSocket(localSock)
-        raiseTransportOsError(error)
+    when declared(SO_REUSEPORT):
+      if ServerFlags.ReusePort in flags:
+        setSockOpt2(localSock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
+          if sock == asyncInvalidSocket:
+            closeSocket(localSock)
+          raiseTransportOsError(error)
 
     if ServerFlags.Broadcast in flags:
       setSockOpt2(localSock, SOL_SOCKET, SO_BROADCAST, 1).isOkOr:
@@ -562,11 +563,12 @@ else:
           closeSocket(localSock)
         raiseTransportOsError(error)
 
-    if ServerFlags.ReusePort in flags:
-      setSockOpt2(localSock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
-        if sock == asyncInvalidSocket:
-          closeSocket(localSock)
-        raiseTransportOsError(error)
+    when declared(SO_REUSEPORT):
+      if ServerFlags.ReusePort in flags:
+        setSockOpt2(localSock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
+          if sock == asyncInvalidSocket:
+            closeSocket(localSock)
+          raiseTransportOsError(error)
 
     if ServerFlags.Broadcast in flags:
       setSockOpt2(localSock, SOL_SOCKET, SO_BROADCAST, 1).isOkOr:

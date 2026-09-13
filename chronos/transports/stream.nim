@@ -57,7 +57,7 @@ type
   SocketFlags* {.pure.} = enum
     TcpNoDelay,
     ReuseAddr,
-    ReusePort
+    ReusePort ## Ignored on platforms without SO_REUSEPORT.
 
   ReadMessagePredicate* = proc (data: openArray[byte]): tuple[consumed: int,
                                                               done: bool] {.
@@ -719,11 +719,12 @@ when defined(windows):
           sock.closeSocket()
           retFuture.fail(getTransportOsError(error))
           return retFuture
-      if SocketFlags.ReusePort in flags:
-        setSockOpt2(sock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
-          sock.closeSocket()
-          retFuture.fail(getTransportOsError(error))
-          return retFuture
+      when declared(SO_REUSEPORT):
+        if SocketFlags.ReusePort in flags:
+          setSockOpt2(sock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
+            sock.closeSocket()
+            retFuture.fail(getTransportOsError(error))
+            return retFuture
       # IPV6_V6ONLY.
       setDualstack(sock, address.family, dualstack).isOkOr:
         sock.closeSocket()
@@ -1577,11 +1578,12 @@ else:
         sock.closeSocket()
         retFuture.fail(getTransportOsError(error))
         return retFuture
-    if SocketFlags.ReusePort in flags:
-      setSockOpt2(sock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
-        sock.closeSocket()
-        retFuture.fail(getTransportOsError(error))
-        return retFuture
+    when declared(SO_REUSEPORT):
+      if SocketFlags.ReusePort in flags:
+        setSockOpt2(sock, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
+          sock.closeSocket()
+          retFuture.fail(getTransportOsError(error))
+          return retFuture
     # IPV6_V6ONLY.
     setDualstack(sock, raddress.family, dualstack).isOkOr:
       sock.closeSocket()
@@ -1992,11 +1994,12 @@ proc createStreamServer*(host: TransportAddress,
               discard closeFd(SocketHandle(sockres))
             raiseTransportOsError(error)
         # SO_REUSEPORT
-        if ServerFlags.ReusePort in flags:
-          setSockOpt2(sockres, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
-            if sock == asyncInvalidSocket:
-              discard closeFd(SocketHandle(sockres))
-            raiseTransportOsError(error)
+        when declared(SO_REUSEPORT):
+          if ServerFlags.ReusePort in flags:
+            setSockOpt2(sockres, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
+              if sock == asyncInvalidSocket:
+                discard closeFd(SocketHandle(sockres))
+              raiseTransportOsError(error)
         # TCP_NODELAY
         if ServerFlags.TcpNoDelay in flags:
           setSockOpt2(sockres, osdefs.IPPROTO_TCP,
@@ -2086,11 +2089,12 @@ proc createStreamServer*(host: TransportAddress,
               discard unregisterAndCloseFd(sockres)
             raiseTransportOsError(error)
         # SO_REUSEPORT
-        if ServerFlags.ReusePort in flags:
-          setSockOpt2(sockres, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
-            if sock == asyncInvalidSocket:
-              discard unregisterAndCloseFd(sockres)
-            raiseTransportOsError(error)
+        when declared(SO_REUSEPORT):
+          if ServerFlags.ReusePort in flags:
+            setSockOpt2(sockres, SOL_SOCKET, SO_REUSEPORT, 1).isOkOr:
+              if sock == asyncInvalidSocket:
+                discard unregisterAndCloseFd(sockres)
+              raiseTransportOsError(error)
         # TCP_NODELAY
         if ServerFlags.TcpNoDelay in flags:
           setSockOpt2(sockres, osdefs.IPPROTO_TCP,

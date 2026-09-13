@@ -981,6 +981,17 @@ suite "Datagram Transport test suite":
       check waitFor(testBroadcast()) == 1
   test "0.0.0.0/::0 (INADDR_ANY) test":
     check waitFor(testAnyAddress()) == 6
+  asyncTest "[IP] optional ReusePort test":
+    proc receive(transp: DatagramTransport, remote: TransportAddress) {.
+         async: (raises: []).} =
+      discard
+
+    let transp = newDatagramTransport(
+      receive, local = initTAddress("127.0.0.1:0"),
+      flags = {ServerFlags.ReusePort})
+    check transp.localAddress().port != Port(0)
+    await transp.closeWait()
+
   asyncTest "[IP] getDomain(socket) [SOCK_DGRAM] test":
     if isAvailable(AddressFamily.IPv4) and isAvailable(AddressFamily.IPv6):
       block:
